@@ -2,38 +2,33 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Survey subcollections ────────────────────────────────────────────────
-
-    // Villages — public read; writes only via setup page (no rule = denied)
     match /surveys/{surveyId}/villages/{villageId} {
       allow read: if true;
       allow write: if false;
     }
 
-    // Votes — one document per voter, keyed by normalizedName.
-    // Document ID uniqueness enforces one-vote-per-name at the DB level.
-    // allow create (not update/delete) → once written it's immutable.
     match /surveys/{surveyId}/votes/{normalizedName} {
       allow read: if true;
       allow create: if request.resource.data.name is string
-                    && request.resource.data.name.size() >= 2
-                    && request.resource.data.normalizedName is string
-                    && request.resource.data.choices is list
-                    && request.resource.data.choices.size() == 3;
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.normalizedName is string
+        && (
+          (request.resource.data.choices is list
+            && request.resource.data.choices.size() == 3)
+          ||
+          (request.resource.data.selections is list
+            && request.resource.data.selections.size() == 3)
+        );
       allow update, delete: if false;
     }
 
-    // Participants — lightweight presence record, same key as votes.
-    // Creating a document with an existing ID is blocked by "allow create"
-    // (Firestore rejects if the document already exists when only create is allowed).
     match /surveys/{surveyId}/participants/{normalizedName} {
       allow read: if true;
       allow create: if request.resource.data.name is string
-                    && request.resource.data.normalizedName is string;
+        && request.resource.data.normalizedName is string;
       allow update, delete: if false;
     }
 
-    // ── Meta / setup flag ───────────────────────────────────────────────────
     match /meta/setup {
       allow read, write: if true;
     }
