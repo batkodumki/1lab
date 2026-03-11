@@ -2,19 +2,29 @@
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
+// Root reference for the survey
+const SURVEY = db.collection('surveys').doc('main');
+
+// ===== Name normalization =====
+function normalizeName(raw) {
+  return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 // ===== Session helpers =====
+// After name submit, we store the display name and its normalized form.
+// No tokens, no isTeacher — admin access is handled separately via ADMIN_PASSWORD.
 const Session = {
-  set(token, name, isTeacher) {
-    sessionStorage.setItem('token',     token);
-    sessionStorage.setItem('name',      name);
-    sessionStorage.setItem('isTeacher', isTeacher ? '1' : '0');
+  set(name) {
+    sessionStorage.setItem('name',           name);
+    sessionStorage.setItem('normalizedName', normalizeName(name));
   },
-  get token()     { return sessionStorage.getItem('token'); },
-  get name()      { return sessionStorage.getItem('name'); },
-  get isTeacher() { return sessionStorage.getItem('isTeacher') === '1'; },
-  clear()         { sessionStorage.clear(); },
-  require(page) {
-    if (!this.token) { window.location.href = 'index.html'; return false; }
+  get name()           { return sessionStorage.getItem('name'); },
+  get normalizedName() { return sessionStorage.getItem('normalizedName'); },
+  setAdmin()           { sessionStorage.setItem('isAdmin', '1'); },
+  get isAdmin()        { return sessionStorage.getItem('isAdmin') === '1'; },
+  clear()              { sessionStorage.clear(); },
+  require() {
+    if (!this.name) { window.location.href = 'index.html'; return false; }
     return true;
   }
 };
@@ -60,18 +70,3 @@ const VILLAGES = [
   { name: "Квасово",             desc: "Курортне село з мінеральними джерелами типу «Боржомі» в Берегівському районі" },
   { name: "Іршавська Поляна",    desc: "Мальовниче лісове передгірське село з розвиненим зеленим туризмом" },
 ];
-
-const EXPERT_NAMES = [
-  "Іванченко Олексій", "Петренко Марія",    "Коваленко Дмитро",
-  "Бондаренко Ольга",  "Мельник Василь",    "Шевченко Наталія",
-  "Кравченко Андрій",  "Лисенко Тетяна",    "Морозенко Ігор",
-  "Гончаренко Людмила","Тимошенко Роман",   "Захаренко Ірина",
-  "Павленко Сергій",   "Романенко Оксана",  "Савченко Микола",
-  "Олійник Вікторія",  "Яременко Богдан",   "Клименко Анна",
-  "Ткаченко Юрій",     "Пилипенко Галина",
-];
-
-function genToken(len = 8) {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}

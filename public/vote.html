@@ -83,17 +83,18 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/app.js"></script>
 <script>
-if (!Session.require()) {}  // redirects if no session
+// Redirect if no session
+if (!Session.require()) { /* redirected */ }
 
-const sel = {};  // rank (1-3) -> {id, name}
-let allObjects = [];
+const sel = {};  // rank (1|2|3) → {id, name}
+let allVillages = [];
 
 // ── Load villages ──
-async function loadObjects() {
+async function loadVillages() {
   try {
-    const snap = await db.collection('objects').orderBy('order').get();
-    allObjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    renderGrid(allObjects);
+    const snap = await SURVEY.collection('villages').orderBy('order').get();
+    allVillages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderGrid(allVillages);
     document.getElementById('spinner').style.display = 'none';
     document.getElementById('voteApp').style.display = 'block';
   } catch(e) {
@@ -101,21 +102,21 @@ async function loadObjects() {
   }
 }
 
-function renderGrid(objects) {
+function renderGrid(villages) {
   const grid = document.getElementById('vpGrid');
   grid.innerHTML = '';
-  objects.forEach(obj => {
+  villages.forEach(v => {
     const div = document.createElement('div');
-    div.className = 'vc';
-    div.dataset.id   = obj.id;
-    div.dataset.name = obj.name;
-    div.id = 'vc-' + obj.id;
+    div.className   = 'vc';
+    div.dataset.id  = v.id;
+    div.dataset.name = v.name;
+    div.id = 'vc-' + v.id;
     div.innerHTML = `
-      <div class="vc-name">${obj.name}</div>
-      <div class="vc-desc">${obj.desc}</div>
-      <div class="vc-badge" id="vcb-${obj.id}"></div>
+      <div class="vc-name">${v.name}</div>
+      <div class="vc-desc">${v.desc}</div>
+      <div class="vc-badge" id="vcb-${v.id}"></div>
     `;
-    div.addEventListener('click', () => toggleVillage(obj.id, obj.name));
+    div.addEventListener('click', () => toggleVillage(v.id, v.name));
     grid.appendChild(div);
   });
 }
@@ -128,16 +129,16 @@ function filterVillages() {
 }
 
 function toggleVillage(id, name) {
-  // If already selected — deselect it
-  for (const rank of [1,2,3]) {
+  // Deselect if already chosen
+  for (const rank of [1, 2, 3]) {
     if (sel[rank] && sel[rank].id === id) { clearSlot(rank); return; }
   }
-  // Find first free slot
-  for (const rank of [1,2,3]) {
-    if (!sel[rank]) { sel[rank] = {id, name}; updateUI(); return; }
+  // Fill first empty slot
+  for (const rank of [1, 2, 3]) {
+    if (!sel[rank]) { sel[rank] = { id, name }; updateUI(); return; }
   }
-  // All full — replace rank 3
-  sel[3] = {id, name};
+  // All full — replace slot 3
+  sel[3] = { id, name };
   updateUI();
 }
 
@@ -147,7 +148,7 @@ function clearSlot(rank) {
 }
 
 function updateUI() {
-  for (const rank of [1,2,3]) {
+  for (const rank of [1, 2, 3]) {
     const body = document.getElementById(`slot-body-${rank}`);
     if (sel[rank]) {
       body.innerHTML = `
@@ -158,10 +159,9 @@ function updateUI() {
       body.innerHTML = `<span class="slot-ph">← оберіть село зі списку</span>`;
     }
   }
-  // Update village cards
   const selIds = Object.values(sel).map(s => s.id);
   document.querySelectorAll('.vc').forEach(c => {
-    const id = c.dataset.id;
+    const id    = c.dataset.id;
     const badge = document.getElementById('vcb-' + id);
     if (selIds.includes(id)) {
       c.classList.add('sel');
@@ -182,38 +182,53 @@ async function submitVote() {
   if (Object.keys(sel).length < 3) return;
   document.getElementById('btnSubmit').disabled = true;
 
-  const token = Session.token;
+  const name           = Session.name;
+  const normalizedName = Session.normalizedName;
+
+  const participantRef = SURVEY.collection('participants').doc(normalizedName);
+  const voteRef        = SURVEY.collection('votes').doc(normalizedName);
+
   try {
-    // Double-check not already voted
-    const expSnap = await db.collection('experts').doc(token).get();
-    if (expSnap.data().voted) {
-      showAlert('Ви вже проголосували.', 'info');
-      setTimeout(() => window.location.href = 'results.html', 1500);
-      return;
-    }
+    await db.runTransaction(async t => {
+      const snap = await t.get(participantRef);
+      if (snap.exists) {
+        throw { code: 'already-voted' };
+      }
 
-    const batch = db.batch();
-    for (const rank of [1,2,3]) {
-      const ref = db.collection('votes').doc();
-      batch.set(ref, {
-        expertToken: token,
-        objectId:    sel[rank].id,
-        rank:        parseInt(rank),
-        createdAt:   firebase.firestore.FieldValue.serverTimestamp()
+      const choices = [1, 2, 3].map(rank => ({
+        villageId:   sel[rank].id,
+        villageName: sel[rank].name,
+        rank:        rank
+      }));
+
+      t.set(voteRef, {
+        name,
+        normalizedName,
+        choices,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-    }
-    batch.update(db.collection('experts').doc(token), { voted: true });
-    await batch.commit();
+      t.set(participantRef, {
+        name,
+        normalizedName,
+        votedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
 
+    Session.clear();
     showAlert('✅ Ваш голос збережено анонімно. Дякуємо!', 'success');
     setTimeout(() => window.location.href = 'results.html', 1800);
   } catch(e) {
-    showAlert('Помилка збереження: ' + e.message, 'error');
-    document.getElementById('btnSubmit').disabled = false;
+    if (e.code === 'already-voted') {
+      showAlert('Ви вже проголосували.', 'info');
+      setTimeout(() => window.location.href = 'results.html', 1500);
+    } else {
+      showAlert('Помилка збереження: ' + e.message, 'error');
+      document.getElementById('btnSubmit').disabled = false;
+    }
   }
 }
 
-loadObjects();
+loadVillages();
 </script>
 </body>
 </html>

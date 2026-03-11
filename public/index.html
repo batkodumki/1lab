@@ -26,20 +26,21 @@
   <div class="page-center">
     <div class="card login-card">
       <div class="card-hdr">
-        <h2>Вхід до системи голосування</h2>
-        <p>Введіть персональний токен доступу, отриманий від викладача</p>
+        <h2>Участь у голосуванні</h2>
+        <p>Введіть своє ім'я та прізвище, щоб розпочати</p>
       </div>
 
       <div class="login-body">
         <div class="form-group">
-          <label for="tokenInput">Токен доступу</label>
-          <input type="text" id="tokenInput" placeholder="Наприклад: AB2KPQ7R"
-                 autocomplete="off" autocapitalize="characters" maxlength="16"
+          <label for="nameInput">Ім'я та прізвище</label>
+          <input type="text" id="nameInput" placeholder="Наприклад: Іванченко Олексій"
+                 autocomplete="name" maxlength="80"
                  onkeydown="if(event.key==='Enter') doLogin()">
-          <small>Токен анонімний — ваше ім'я не пов'язується з голосом в публічних результатах</small>
+          <small>Ваше ім'я використовується лише для запобігання подвійному голосуванню.
+            У публічних результатах воно не відображається.</small>
         </div>
         <button class="btn btn-primary btn-full" id="btnLogin" onclick="doLogin()">
-          Увійти та проголосувати
+          Проголосувати
         </button>
       </div>
 
@@ -48,7 +49,7 @@
         <ul>
           <li>Оберіть <strong>3 найкращих</strong> села Закарпаття на вашу думку</li>
           <li>Розставте їх за пріоритетом: 1-е — найважливіше</li>
-          <li>Голосування <strong>анонімне та конфіденційне</strong></li>
+          <li>Результати <strong>анонімні</strong> — імена не публікуються</li>
           <li>Проголосувати можна лише <strong>один раз</strong></li>
         </ul>
       </div>
@@ -67,34 +68,35 @@
 <script src="js/app.js"></script>
 <script>
 async function doLogin() {
-  const token = document.getElementById('tokenInput').value.trim().toUpperCase();
-  if (!token) { showAlert('Введіть токен доступу.', 'error'); return; }
+  const raw = document.getElementById('nameInput').value;
+  // Normalize: trim + collapse spaces
+  const name = raw.trim().replace(/\s+/g, ' ');
 
-  document.getElementById('btnLogin').disabled = true;
+  if (name.length < 2) {
+    showAlert("Введіть своє ім'я (мінімум 2 символи).", 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = true;
 
   try {
-    const snap = await db.collection('experts').doc(token).get();
-    if (!snap.exists) {
-      showAlert('Невірний токен. Перевірте та спробуйте знову.', 'error');
-      document.getElementById('btnLogin').disabled = false;
-      return;
-    }
-    const expert = snap.data();
-    Session.set(token, expert.name, expert.isTeacher);
+    const key = normalizeName(name);
 
-    if (expert.isTeacher) {
-      window.location.href = 'admin.html';
+    // Check if this person already voted
+    const snap = await SURVEY.collection('participants').doc(key).get();
+    if (snap.exists) {
+      showAlert('Ви вже проголосували. Дякуємо за участь!', 'info');
+      setTimeout(() => window.location.href = 'results.html', 2000);
       return;
     }
-    if (expert.voted) {
-      showAlert('Ви вже проголосували. Дякуємо!', 'info');
-      setTimeout(() => window.location.href = 'results.html', 1500);
-      return;
-    }
+
+    // Save name to session and go to ballot
+    Session.set(name);
     window.location.href = 'vote.html';
   } catch(e) {
-    showAlert('Помилка: ' + e.message, 'error');
-    document.getElementById('btnLogin').disabled = false;
+    showAlert('Помилка підключення: ' + e.message, 'error');
+    btn.disabled = false;
   }
 }
 </script>

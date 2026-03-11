@@ -28,7 +28,7 @@
 
     <h2 style="font-size:1.4rem;color:#2e7d32;margin-bottom:16px;">Результати голосування</h2>
 
-    <!-- Stats -->
+    <!-- Stats (no names — fully anonymous) -->
     <div class="stats-row" id="statsRow"></div>
 
     <!-- Empty state -->
@@ -65,7 +65,7 @@
 
     <!-- Not selected -->
     <section id="notSelSec" style="display:none;">
-      <h3>Поза ядром A² (не обрані жодним експертом)</h3>
+      <h3>Поза ядром A² (не обрані жодним учасником)</h3>
       <div class="tags" id="notSelTags"></div>
     </section>
 
@@ -86,55 +86,58 @@ async function loadResults() {
   document.getElementById('spinner').style.display = 'block';
   document.getElementById('resApp').style.display  = 'none';
 
+  // Reset dynamic sections
+  ['podiumSec','rankSec','notSelSec','emptyState'].forEach(id => {
+    document.getElementById(id).style.display = 'none';
+  });
+
   try {
-    const [objSnap, voteSnap, expSnap] = await Promise.all([
-      db.collection('objects').orderBy('order').get(),
-      db.collection('votes').get(),
-      db.collection('experts').where('isTeacher', '==', false).get()
+    const [villageSnap, voteSnap, participantSnap] = await Promise.all([
+      SURVEY.collection('villages').orderBy('order').get(),
+      SURVEY.collection('votes').get(),
+      SURVEY.collection('participants').get()
     ]);
 
-    const objects   = objSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const votes     = voteSnap.docs.map(d => d.data());
-    const totalExp  = expSnap.size;
-    const votedCount = expSnap.docs.filter(d => d.data().voted).length;
+    const villages      = villageSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const votes         = voteSnap.docs.map(d => d.data());
+    const voterCount    = participantSnap.size;  // count only — names not shown
 
-    // Aggregate scores
+    // Build score map
     const scoreMap = {};
-    objects.forEach(o => {
-      scoreMap[o.id] = { ...o, score:0, mentions:0, p1:0, p2:0, p3:0 };
-    });
-    votes.forEach(v => {
-      if (!scoreMap[v.objectId]) return;
-      const pts = v.rank === 1 ? 3 : v.rank === 2 ? 2 : 1;
-      scoreMap[v.objectId].score    += pts;
-      scoreMap[v.objectId].mentions += 1;
-      if (v.rank === 1) scoreMap[v.objectId].p1++;
-      if (v.rank === 2) scoreMap[v.objectId].p2++;
-      if (v.rank === 3) scoreMap[v.objectId].p3++;
+    villages.forEach(v => {
+      scoreMap[v.id] = { ...v, score: 0, mentions: 0, p1: 0, p2: 0, p3: 0 };
     });
 
-    const sorted = Object.values(scoreMap).sort((a,b) =>
+    votes.forEach(vote => {
+      vote.choices.forEach(c => {
+        if (!scoreMap[c.villageId]) return;
+        const pts = c.rank === 1 ? 3 : c.rank === 2 ? 2 : 1;
+        scoreMap[c.villageId].score    += pts;
+        scoreMap[c.villageId].mentions += 1;
+        if (c.rank === 1) scoreMap[c.villageId].p1++;
+        if (c.rank === 2) scoreMap[c.villageId].p2++;
+        if (c.rank === 3) scoreMap[c.villageId].p3++;
+      });
+    });
+
+    const sorted = Object.values(scoreMap).sort((a, b) =>
       b.score - a.score || b.mentions - a.mentions
     );
-    const core    = sorted.filter(s => s.score > 0);
-    const notSel  = sorted.filter(s => s.score === 0);
+    const core   = sorted.filter(s => s.score > 0);
+    const notSel = sorted.filter(s => s.score === 0);
 
-    // Stats
+    // Stats — anonymous counts only
     document.getElementById('statsRow').innerHTML = `
-      <div class="stat"><div class="stat-n">${votedCount}</div><div class="stat-l">Проголосувало</div></div>
-      <div class="stat"><div class="stat-n">${totalExp}</div><div class="stat-l">Всього експертів</div></div>
-      <div class="stat"><div class="stat-n">${totalExp ? Math.round(votedCount/totalExp*100) : 0}%</div><div class="stat-l">Явка</div></div>
+      <div class="stat"><div class="stat-n">${voterCount}</div><div class="stat-l">Проголосувало</div></div>
       <div class="stat"><div class="stat-n">${core.length}</div><div class="stat-l">Ядро A²</div></div>
     `;
 
     if (core.length === 0) {
       document.getElementById('emptyState').style.display = 'block';
     } else {
-      document.getElementById('emptyState').style.display = 'none';
-
-      // Podium (top 3)
+      // Podium
       if (core.length >= 3) {
-        const top = sorted.slice(0,3);
+        const top = sorted.slice(0, 3);
         document.getElementById('podium').innerHTML = `
           <div class="pd">
             <div class="pd-name">${top[1].name}</div>
@@ -157,13 +160,13 @@ async function loadResults() {
 
       // Ranking table
       const maxScore = sorted[0].score || 1;
-      const medals = ['🥇','🥈','🥉'];
+      const medals   = ['🥇', '🥈', '🥉'];
       let rows = '';
       sorted.forEach((row, i) => {
         if (row.score === 0) return;
         const rankCell = i < 3
           ? `<span class="medal">${medals[i]}</span>`
-          : `<span class="rn">${i+1}</span>`;
+          : `<span class="rn">${i + 1}</span>`;
         const pct = Math.round(row.score / maxScore * 100);
         rows += `
           <tr class="${i < 3 ? 'tr-top' : ''}">
@@ -190,7 +193,7 @@ async function loadResults() {
     }
 
     document.getElementById('spinner').style.display = 'none';
-    document.getElementById('resApp').style.display = 'block';
+    document.getElementById('resApp').style.display  = 'block';
   } catch(e) {
     document.getElementById('spinner').textContent = 'Помилка: ' + e.message;
     console.error(e);

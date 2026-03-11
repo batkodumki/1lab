@@ -13,3 +13,9 @@ const firebaseConfig = {
   messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID",
   appId:             "PASTE_YOUR_APP_ID"
 };
+
+// =====================================================
+//  ПАРОЛЬ ВИКЛАДАЧА для доступу до admin.html
+//  Змініть перед деплоєм та повідомте тільки собі.
+// =====================================================
+const ADMIN_PASSWORD = "teacher2024";

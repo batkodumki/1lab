@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Протокол викладача — Найкращі села Закарпаття</title>
   <link rel="stylesheet" href="css/style.css">
+  <style>
+    .admin-gate {
+      display: flex; justify-content: center; padding: 40px 16px;
+    }
+    .admin-gate .card {
+      width: 100%; max-width: 420px;
+    }
+    .admin-gate .login-body { padding: 22px 24px 24px; }
+  </style>
 </head>
 <body>
 <header>
@@ -14,75 +23,102 @@
       <div><h1>Найкращі села Закарпаття</h1><p>Протокол викладача</p></div>
     </div>
     <nav>
-      <a href="results.html">Результати</a>
-      <button onclick="loadAdmin()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:.85rem;">↻ Оновити</button>
-      <a href="index.html" onclick="Session.clear()">Вийти</a>
+      <a href="results.html">Публічні результати</a>
+      <button id="btnRefresh" onclick="loadAdmin()" style="display:none;background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:.85rem;">↻ Оновити</button>
+      <button id="btnLogout"  onclick="adminLogout()" style="display:none;background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:.85rem;">Вийти</button>
     </nav>
   </div>
 </header>
 
 <main>
   <div id="alerts"></div>
-  <div id="spinner">⏳ Завантаження протоколу…</div>
+
+  <!-- ── Password gate ── -->
+  <div class="admin-gate" id="gateView">
+    <div class="card">
+      <div class="card-hdr">
+        <h2>🔐 Доступ до протоколу</h2>
+        <p>Введіть пароль викладача</p>
+      </div>
+      <div class="login-body">
+        <div class="form-group">
+          <label for="adminPass">Пароль</label>
+          <input type="password" id="adminPass" placeholder="••••••••"
+                 onkeydown="if(event.key==='Enter') checkAdminPass()">
+        </div>
+        <button class="btn btn-primary btn-full" onclick="checkAdminPass()">Увійти</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Admin content ── -->
   <div id="adminApp" style="display:none;">
+    <div id="spinner">⏳ Завантаження протоколу…</div>
+    <div id="adminContent" style="display:none;">
 
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-      <h2 style="font-size:1.35rem;color:#b71c1c;">🔐 Протокол викладача</h2>
-      <div class="stats-row" id="statsRow" style="margin:0;"></div>
-    </div>
-
-    <!-- 1. Tokens table -->
-    <div class="adm-sec">
-      <h3>Токени експертів</h3>
-      <p class="sec-note">Розподіліть кожному студенту його токен особисто або через закрите повідомлення.</p>
-      <button class="copy-btn" style="padding:5px 12px;font-size:.82rem;margin-bottom:8px;" onclick="copyTokens()">
-        📋 Скопіювати всі токени
-      </button>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Ім'я</th><th>Токен</th><th>Статус</th></tr></thead>
-          <tbody id="tokensBody"></tbody>
-        </table>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <h2 style="font-size:1.35rem;color:#b71c1c;">🔐 Протокол викладача</h2>
+        <div class="stats-row" id="statsRow" style="margin:0;"></div>
       </div>
-    </div>
 
-    <!-- 2. Aggregate ranking -->
-    <div class="adm-sec">
-      <h3>Зведений рейтинг (агрегований результат)</h3>
-      <p class="sec-note">1-е місце → 3 бали, 2-е → 2 бали, 3-є → 1 бал.</p>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr><th>Місце</th><th>Село</th><th>Σ Балів</th><th>Згадок</th><th>1-е</th><th>2-е</th><th>3-є</th><th>Ядро A²</th></tr></thead>
-          <tbody id="rankBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- 3. Individual ballots -->
-    <div class="adm-sec">
-      <h3>Індивідуальні бюлетені (МП кожного ЧК)</h3>
-      <p class="sec-note">
-        Кожен експерт <em>i</em> задає МП: A<sup>ν</sup><sub>i</sub> = {a¹ ≻ a² ≻ a³}, ν = 3.
-      </p>
-      <div class="proto-grid" id="protoGrid"></div>
-      <p id="noProto" style="color:#90a4ae;display:none;">Жодного голосу ще не надійшло.</p>
-    </div>
-
-    <!-- 4. Core A² -->
-    <div class="adm-sec">
-      <h3>Ядро лідерів A² — математичне визначення</h3>
-      <div class="math-box">
-        <p>
-          <strong>Ядро лідерів організації (колективу)</strong> — підмножина A² ⊆ A
-          початкової множини, що визначається як об'єднання підмножин претендентів
-          A<sup>ν</sup><sub>j</sub>, які потрапили до МП:
+      <!-- 1. Participants list -->
+      <div class="adm-sec">
+        <h3>Список учасників</h3>
+        <p class="sec-note">Перелік усіх, хто вже проголосував.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Ім'я</th><th>Час голосування</th></tr></thead>
+            <tbody id="participantsBody"></tbody>
+          </table>
+        </div>
+        <p id="noParticipants" style="color:#90a4ae;display:none;padding:12px 0;">
+          Жодного учасника ще немає.
         </p>
-        <p class="formula">⋃<sub>j∈I</sub> A<sup>ν</sup><sub>j</sub> = A² ⊆ A</p>
-        <p id="coreDesc"></p>
-        <div class="tags" id="coreTags" style="margin-top:8px;"></div>
       </div>
-    </div>
 
+      <!-- 2. Aggregate ranking -->
+      <div class="adm-sec">
+        <h3>Зведений рейтинг (агрегований результат)</h3>
+        <p class="sec-note">1-е місце → 3 бали, 2-е → 2 бали, 3-є → 1 бал.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Місце</th><th>Село</th><th>Σ Балів</th>
+              <th>Згадок</th><th>1-е</th><th>2-е</th><th>3-є</th><th>Ядро A²</th>
+            </tr></thead>
+            <tbody id="rankBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. Individual ballots -->
+      <div class="adm-sec">
+        <h3>Індивідуальні бюлетені (МП кожного ЧК)</h3>
+        <p class="sec-note">
+          Кожен учасник <em>i</em> задає МП: A<sup>ν</sup><sub>i</sub> = {a¹ ≻ a² ≻ a³}, ν = 3.
+        </p>
+        <div class="proto-grid" id="protoGrid"></div>
+        <p id="noProto" style="color:#90a4ae;display:none;padding:12px 0;">
+          Жодного голосу ще не надійшло.
+        </p>
+      </div>
+
+      <!-- 4. Core A² -->
+      <div class="adm-sec">
+        <h3>Ядро лідерів A² — математичне визначення</h3>
+        <div class="math-box">
+          <p>
+            <strong>Ядро лідерів організації (колективу)</strong> — підмножина A² ⊆ A
+            початкової множини, що визначається як об'єднання підмножин претендентів
+            A<sup>ν</sup><sub>j</sub>, які потрапили до МП:
+          </p>
+          <p class="formula">⋃<sub>j∈I</sub> A<sup>ν</sup><sub>j</sub> = A² ⊆ A</p>
+          <p id="coreDesc"></p>
+          <div class="tags" id="coreTags" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+    </div>
   </div>
 </main>
 
@@ -95,146 +131,163 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/app.js"></script>
 <script>
-// Guard: teacher only
-(function() {
-  if (!Session.token) { window.location.href = 'index.html'; }
-  else if (!Session.isTeacher) { window.location.href = 'index.html'; }
-})();
+// ── Password check ──
+function checkAdminPass() {
+  const entered = document.getElementById('adminPass').value;
+  if (entered === ADMIN_PASSWORD) {
+    Session.setAdmin();
+    enterAdmin();
+  } else {
+    showAlert('Невірний пароль.', 'error');
+    document.getElementById('adminPass').value = '';
+    document.getElementById('adminPass').focus();
+  }
+}
 
-let allTokensData = [];
+function enterAdmin() {
+  document.getElementById('gateView').style.display  = 'none';
+  document.getElementById('adminApp').style.display  = 'block';
+  document.getElementById('btnRefresh').style.display = 'inline-block';
+  document.getElementById('btnLogout').style.display  = 'inline-block';
+  loadAdmin();
+}
 
+function adminLogout() {
+  Session.clear();
+  window.location.href = 'index.html';
+}
+
+// ── Auto-enter if already authenticated in this session ──
+if (Session.isAdmin) {
+  enterAdmin();
+}
+
+// ── Load admin data ──
 async function loadAdmin() {
-  document.getElementById('spinner').style.display = 'block';
-  document.getElementById('adminApp').style.display = 'none';
+  document.getElementById('spinner').style.display       = 'block';
+  document.getElementById('adminContent').style.display = 'none';
+  document.getElementById('noProto').style.display      = 'none';
+  document.getElementById('noParticipants').style.display = 'none';
 
   try {
-    const [objSnap, voteSnap, expSnap] = await Promise.all([
-      db.collection('objects').orderBy('order').get(),
-      db.collection('votes').get(),
-      db.collection('experts').orderBy('name').get()
+    const [villageSnap, voteSnap, participantSnap] = await Promise.all([
+      SURVEY.collection('villages').orderBy('order').get(),
+      SURVEY.collection('votes').get(),
+      SURVEY.collection('participants').orderBy('votedAt').get()
     ]);
 
-    const objects   = objSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const votes     = voteSnap.docs.map(d => d.data());
-    const experts   = expSnap.docs.map(d => ({ token: d.id, ...d.data() }));
-    const nonTeacher = experts.filter(e => !e.isTeacher);
-    const votedCount = nonTeacher.filter(e => e.voted).length;
+    const villages     = villageSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const votes        = voteSnap.docs.map(d => d.data());
+    const participants = participantSnap.docs.map(d => d.data());
 
-    // Stats
+    // ── Stats ──
     document.getElementById('statsRow').innerHTML = `
-      <div class="stat"><div class="stat-n">${votedCount} / ${nonTeacher.length}</div><div class="stat-l">Проголосувало</div></div>
+      <div class="stat">
+        <div class="stat-n">${participants.length}</div>
+        <div class="stat-l">Проголосувало</div>
+      </div>
     `;
 
-    // Tokens table
-    allTokensData = experts;
-    const tokensBody = document.getElementById('tokensBody');
-    tokensBody.innerHTML = '';
-    let idx = 1;
-    experts.forEach(e => {
-      const tr = document.createElement('tr');
-      if (e.isTeacher) {
-        tr.innerHTML = `<td><em>—</em></td><td><em>${e.name} (викладач)</em></td><td><code>${e.token}</code></td><td><span class="badge bg-ok">Адмін</span></td>`;
-      } else {
-        tr.className = e.voted ? 'voted-tr' : 'notvoted-tr';
+    // ── Participants table ──
+    const pBody = document.getElementById('participantsBody');
+    pBody.innerHTML = '';
+    if (participants.length === 0) {
+      document.getElementById('noParticipants').style.display = 'block';
+    } else {
+      participants.forEach((p, i) => {
+        const tr = document.createElement('tr');
+        tr.className = 'voted-tr';
+        const time = p.votedAt
+          ? new Date(p.votedAt.seconds * 1000).toLocaleString('uk-UA')
+          : '—';
         tr.innerHTML = `
-          <td>${idx++}</td>
-          <td>${e.name}</td>
-          <td><code>${e.token}</code></td>
-          <td>${e.voted
-            ? '<span class="badge bg-ok">✓ Проголосував</span>'
-            : '<span class="badge bg-wait">⏳ Очікується</span>'}</td>
+          <td>${i + 1}</td>
+          <td><strong>${p.name}</strong></td>
+          <td style="color:#546e7a;font-size:.82rem;">${time}</td>
         `;
-      }
-      tokensBody.appendChild(tr);
-    });
+        pBody.appendChild(tr);
+      });
+    }
 
-    // Aggregate scores
+    // ── Aggregate scores ──
     const objMap = {};
-    objects.forEach(o => { objMap[o.id] = { ...o, score:0, mentions:0, p1:0, p2:0, p3:0 }; });
-    votes.forEach(v => {
-      if (!objMap[v.objectId]) return;
-      objMap[v.objectId].score    += v.rank === 1 ? 3 : v.rank === 2 ? 2 : 1;
-      objMap[v.objectId].mentions += 1;
-      if (v.rank === 1) objMap[v.objectId].p1++;
-      if (v.rank === 2) objMap[v.objectId].p2++;
-      if (v.rank === 3) objMap[v.objectId].p3++;
+    villages.forEach(v => {
+      objMap[v.id] = { ...v, score: 0, mentions: 0, p1: 0, p2: 0, p3: 0 };
     });
-    const sorted = Object.values(objMap).sort((a,b) => b.score - a.score || b.mentions - a.mentions);
+    votes.forEach(vote => {
+      vote.choices.forEach(c => {
+        if (!objMap[c.villageId]) return;
+        objMap[c.villageId].score    += c.rank === 1 ? 3 : c.rank === 2 ? 2 : 1;
+        objMap[c.villageId].mentions += 1;
+        if (c.rank === 1) objMap[c.villageId].p1++;
+        if (c.rank === 2) objMap[c.villageId].p2++;
+        if (c.rank === 3) objMap[c.villageId].p3++;
+      });
+    });
+    const sorted = Object.values(objMap).sort((a, b) =>
+      b.score - a.score || b.mentions - a.mentions
+    );
 
-    // Rank table
+    // ── Rank table ──
     const rankBody = document.getElementById('rankBody');
     rankBody.innerHTML = '';
     sorted.forEach((row, i) => {
       const tr = document.createElement('tr');
       tr.className = row.score > 0 ? 'core-tr' : 'nocore-tr';
       tr.innerHTML = `
-        <td>${i+1}</td>
+        <td>${i + 1}</td>
         <td><strong>${row.name}</strong></td>
         <td class="td-score">${row.score}</td>
         <td class="td-c">${row.mentions}</td>
         <td class="td-c">${row.p1}</td>
         <td class="td-c">${row.p2}</td>
         <td class="td-c">${row.p3}</td>
-        <td>${row.score > 0 ? '<span class="badge bg-ok">✓</span>' : '<span class="badge bg-muted">—</span>'}</td>
+        <td>${row.score > 0
+          ? '<span class="badge bg-ok">✓</span>'
+          : '<span class="badge bg-muted">—</span>'}</td>
       `;
       rankBody.appendChild(tr);
     });
 
-    // Individual ballots
-    // Group votes by expert
-    const byExpert = {};
-    votes.forEach(v => {
-      if (!byExpert[v.expertToken]) byExpert[v.expertToken] = [];
-      byExpert[v.expertToken].push(v);
-    });
+    // ── Individual ballots ──
     const grid = document.getElementById('protoGrid');
     grid.innerHTML = '';
-    const expertMap = {};
-    nonTeacher.forEach(e => { expertMap[e.token] = e.name; });
+    if (votes.length === 0) {
+      document.getElementById('noProto').style.display = 'block';
+    } else {
+      votes.forEach(vote => {
+        const sortedChoices = [...vote.choices].sort((a, b) => a.rank - b.rank);
+        const card = document.createElement('div');
+        card.className = 'proto-card';
+        card.innerHTML = `
+          <div class="proto-name">${vote.name}</div>
+          <ol class="proto-list">
+            ${sortedChoices.map(c => `
+              <li>
+                <span class="rb rb-${c.rank}">${c.rank}</span>
+                ${c.villageName}
+              </li>`).join('')}
+          </ol>
+        `;
+        grid.appendChild(card);
+      });
+    }
 
-    let ballotCount = 0;
-    Object.entries(byExpert).forEach(([token, evotes]) => {
-      ballotCount++;
-      const name = expertMap[token] || 'Анонім';
-      const sortedVotes = evotes.sort((a,b) => a.rank - b.rank);
-      const card = document.createElement('div');
-      card.className = 'proto-card';
-      card.innerHTML = `
-        <div class="proto-name">${name}</div>
-        <ol class="proto-list">
-          ${sortedVotes.map(v => {
-            const obj = objMap[v.objectId];
-            return `<li><span class="rb rb-${v.rank}">${v.rank}</span>${obj ? obj.name : '?'}</li>`;
-          }).join('')}
-        </ol>
-      `;
-      grid.appendChild(card);
-    });
-
-    if (ballotCount === 0) document.getElementById('noProto').style.display = 'block';
-
-    // Core A²
+    // ── Core A² ──
     const core = sorted.filter(s => s.score > 0);
     document.getElementById('coreDesc').textContent =
-      `Поточне ядро A² містить ${core.length} сіл з ${objects.length}:`;
+      `Поточне ядро A² містить ${core.length} сіл з ${villages.length}:`;
     document.getElementById('coreTags').innerHTML =
-      core.map((r,i) => `<span class="tag tag-core">${i+1}. ${r.name} (${r.score} б.)</span>`).join('') ||
-      '<em style="color:#90a4ae">Ядро порожнє — немає голосів.</em>';
+      core.map((r, i) => `<span class="tag tag-core">${i + 1}. ${r.name} (${r.score} б.)</span>`).join('')
+      || '<em style="color:#90a4ae">Ядро порожнє — голосів ще немає.</em>';
 
-    document.getElementById('spinner').style.display = 'none';
-    document.getElementById('adminApp').style.display = 'block';
+    document.getElementById('spinner').style.display       = 'none';
+    document.getElementById('adminContent').style.display = 'block';
   } catch(e) {
     document.getElementById('spinner').textContent = 'Помилка: ' + e.message;
     console.error(e);
   }
 }
-
-function copyTokens() {
-  const lines = allTokensData.map(e => `${e.name}\t${e.token}`).join('\n');
-  navigator.clipboard.writeText(lines).then(() => showAlert('Скопійовано!', 'success'));
-}
-
-loadAdmin();
 </script>
 </body>
 </html>

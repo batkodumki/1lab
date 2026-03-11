@@ -13,7 +13,7 @@
       <span class="logo-ico">🏔️</span>
       <div><h1>Найкращі села Закарпаття</h1><p>Система розподіленого голосування</p></div>
     </div>
-    <nav><a href="index.html">Вхід</a></nav>
+    <nav><a href="index.html">Голосування</a></nav>
   </div>
 </header>
 
@@ -28,11 +28,15 @@
     </div>
     <div class="setup-body">
 
-      <!-- Step 1: check config -->
+      <!-- Step 1: button -->
       <div id="stepConfig">
         <p style="margin-bottom:14px;font-size:.9rem;color:#37474f;">
           Переконайтесь, що у файлі <code>js/firebase-config.js</code> вказані
           правильні дані вашого Firebase-проєкту, потім натисніть кнопку нижче.
+        </p>
+        <p style="margin-bottom:14px;font-size:.9rem;color:#37474f;">
+          Буде завантажено <strong>${VILLAGES.length} сіл</strong> Закарпаття як об'єкти опитування.
+          Студенти самостійно вводять своє ім'я та голосують за посиланням.
         </p>
         <button class="btn btn-primary btn-full" id="btnCheck" onclick="checkAndInit()">
           Перевірити конфігурацію та ініціалізувати базу
@@ -42,32 +46,30 @@
       <!-- Step 2: already initialized warning -->
       <div id="stepExists" style="display:none;">
         <div class="alert alert-warning">
-          ⚠️ База даних вже ініціалізована. Повторна ініціалізація <strong>видалить всі голоси</strong>.
+          ⚠️ База даних вже ініціалізована. Повторна ініціалізація
+          <strong>видалить усі голоси і дані учасників</strong>.
         </div>
-        <div style="display:flex;gap:10px;margin-top:12px;">
-          <button class="btn btn-danger" onclick="forceInit()">Перезаписати (видалити всі дані)</button>
+        <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn btn-danger" onclick="forceInit()">Скинути і почати заново</button>
           <a href="admin.html" class="btn btn-primary">Перейти до протоколу</a>
         </div>
       </div>
 
-      <!-- Step 3: result — tokens table -->
+      <!-- Step 3: success -->
       <div id="stepResult" style="display:none;">
         <div class="alert alert-success" id="successMsg"></div>
-        <p style="margin:12px 0 6px;font-size:.88rem;font-weight:600;">
-          Роздайте кожному студенту його токен особисто (або через закрите повідомлення):
+        <p style="margin:14px 0 6px;font-size:.9rem;color:#37474f;">
+          Поділіться посиланням на сторінку голосування зі студентами.
+          Кожен студент вводить власне ім'я — окремих токенів більше немає.
         </p>
-        <button class="copy-btn" style="margin-bottom:8px;padding:5px 12px;font-size:.82rem;" onclick="copyAll()">
-          📋 Скопіювати всю таблицю
-        </button>
-        <div class="tbl-wrap">
-          <table class="token-table" id="tokenTable">
-            <thead><tr><th>#</th><th>Ім'я</th><th>Токен</th><th></th></tr></thead>
-            <tbody id="tokenBody"></tbody>
-          </table>
+        <div style="background:#f1f8e9;border:1px solid #c8e6c9;border-radius:8px;padding:12px 16px;font-size:.88rem;margin-bottom:16px;">
+          <strong>Посилання для студентів:</strong><br>
+          <span id="voteUrl" style="font-family:monospace;color:#1565c0;"></span>
+          <button class="copy-btn" style="margin-left:10px;" onclick="copyUrl()">копіювати</button>
         </div>
-        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
           <a href="admin.html" class="btn btn-primary">Перейти до протоколу</a>
-          <a href="index.html" class="btn" style="background:#eceff1;color:#37474f;">На головну</a>
+          <a href="index.html" class="btn" style="background:#eceff1;color:#37474f;">На сторінку голосування</a>
         </div>
       </div>
 
@@ -84,7 +86,10 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/app.js"></script>
 <script>
-let generatedTokens = [];
+// Show village count from VILLAGES constant
+document.getElementById('stepConfig').querySelector('p:nth-child(2)').innerHTML =
+  document.getElementById('stepConfig').querySelector('p:nth-child(2)').innerHTML
+    .replace('${VILLAGES.length}', VILLAGES.length);
 
 async function checkAndInit() {
   try {
@@ -102,7 +107,7 @@ async function checkAndInit() {
 }
 
 async function forceInit() {
-  if (!confirm('Видалити всі існуючі дані і почати заново?')) return;
+  if (!confirm('Видалити всі голоси та дані учасників і почати заново?')) return;
   document.getElementById('stepExists').style.display = 'none';
   await runInit();
 }
@@ -110,52 +115,50 @@ async function forceInit() {
 async function runInit() {
   loading(true, 'btnCheck');
   document.getElementById('spinner').style.display = 'block';
-  generatedTokens = [];
 
   try {
-    const batch1 = db.batch();
+    // Delete existing subcollections
+    const deleteBatch = db.batch();
+    const [oldVotes, oldPart, oldVillages] = await Promise.all([
+      SURVEY.collection('votes').get(),
+      SURVEY.collection('participants').get(),
+      SURVEY.collection('villages').get()
+    ]);
+    oldVotes.forEach(d    => deleteBatch.delete(d.ref));
+    oldPart.forEach(d     => deleteBatch.delete(d.ref));
+    oldVillages.forEach(d => deleteBatch.delete(d.ref));
+    await deleteBatch.commit();
 
-    // Delete old votes
-    const oldVotes = await db.collection('votes').get();
-    oldVotes.forEach(d => batch1.delete(d.ref));
-    // Delete old experts
-    const oldExperts = await db.collection('experts').get();
-    oldExperts.forEach(d => batch1.delete(d.ref));
-    // Delete old objects
-    const oldObjects = await db.collection('objects').get();
-    oldObjects.forEach(d => batch1.delete(d.ref));
-    await batch1.commit();
-
-    // Add villages
-    const objBatch = db.batch();
-    VILLAGES.forEach((v, i) => {
-      const ref = db.collection('objects').doc();
-      objBatch.set(ref, { name: v.name, desc: v.desc, order: i });
-    });
-    await objBatch.commit();
-
-    // Add experts (token = doc ID)
-    const expBatch = db.batch();
-    const teacherToken = 'TEACHER-' + genToken(6);
-    expBatch.set(db.collection('experts').doc(teacherToken), {
-      name: 'Викладач', isTeacher: true, voted: false
-    });
-    generatedTokens.push({ name: 'Викладач', token: teacherToken, isTeacher: true });
-
-    for (const name of EXPERT_NAMES) {
-      const token = genToken();
-      expBatch.set(db.collection('experts').doc(token), {
-        name, isTeacher: false, voted: false
-      });
-      generatedTokens.push({ name, token, isTeacher: false });
+    // Delete old top-level collections if they exist from previous version
+    const [oldExperts, oldObjects, oldOldVotes] = await Promise.all([
+      db.collection('experts').get(),
+      db.collection('objects').get(),
+      db.collection('votes').get()
+    ]);
+    if (!oldExperts.empty || !oldObjects.empty || !oldOldVotes.empty) {
+      const cleanBatch = db.batch();
+      oldExperts.forEach(d   => cleanBatch.delete(d.ref));
+      oldObjects.forEach(d   => cleanBatch.delete(d.ref));
+      oldOldVotes.forEach(d  => cleanBatch.delete(d.ref));
+      await cleanBatch.commit();
     }
-    await expBatch.commit();
+
+    // Insert villages
+    const villageBatch = db.batch();
+    VILLAGES.forEach((v, i) => {
+      const ref = SURVEY.collection('villages').doc();
+      villageBatch.set(ref, { name: v.name, desc: v.desc, order: i });
+    });
+    await villageBatch.commit();
 
     // Mark setup done
-    await db.collection('meta').doc('setup').set({ createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    await db.collection('meta').doc('setup').set({
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      version: 2
+    });
 
     document.getElementById('spinner').style.display = 'none';
-    showResult();
+    showSuccess();
   } catch(e) {
     document.getElementById('spinner').style.display = 'none';
     loading(false, 'btnCheck');
@@ -164,34 +167,19 @@ async function runInit() {
   }
 }
 
-function showResult() {
+function showSuccess() {
   document.getElementById('stepConfig').style.display = 'none';
   document.getElementById('successMsg').textContent =
-    `✅ База ініціалізована: ${VILLAGES.length} сіл, ${EXPERT_NAMES.length} експертів + 1 викладач.`;
+    `✅ Ініціалізовано: ${VILLAGES.length} сіл завантажено. Система готова до голосування.`;
 
-  const tbody = document.getElementById('tokenBody');
-  generatedTokens.forEach((e, i) => {
-    const tr = document.createElement('tr');
-    if (e.isTeacher) tr.className = 'teacher-row';
-    tr.innerHTML = `
-      <td>${i + 1}</td>
-      <td>${e.name}</td>
-      <td><code>${e.token}</code></td>
-      <td><button class="copy-btn" onclick="copyToken('${e.token}')">копіювати</button></td>
-    `;
-    tbody.appendChild(tr);
-  });
-
+  const url = window.location.origin + '/index.html';
+  document.getElementById('voteUrl').textContent = url;
   document.getElementById('stepResult').style.display = 'block';
 }
 
-function copyToken(t) {
-  navigator.clipboard.writeText(t).then(() => showAlert('Токен скопійовано!', 'success'));
-}
-
-function copyAll() {
-  const lines = generatedTokens.map(e => `${e.name}\t${e.token}`).join('\n');
-  navigator.clipboard.writeText(lines).then(() => showAlert('Таблицю скопійовано!', 'success'));
+function copyUrl() {
+  const url = window.location.origin + '/index.html';
+  navigator.clipboard.writeText(url).then(() => showAlert('Посилання скопійовано!', 'success'));
 }
 </script>
 </body>
