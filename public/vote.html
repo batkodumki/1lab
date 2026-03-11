@@ -86,7 +86,9 @@
 // Redirect if no session
 if (!Session.require()) { /* redirected */ }
 
-const sel = {};  // rank (1|2|3) → {id, name}
+// Ordered array of selected villages — index 0 = rank 1, index 1 = rank 2, index 2 = rank 3.
+// Removing an entry compacts the array so ranks renumber automatically.
+let selOrder = [];
 let allVillages = [];
 
 // ── Load villages ──
@@ -107,8 +109,8 @@ function renderGrid(villages) {
   grid.innerHTML = '';
   villages.forEach(v => {
     const div = document.createElement('div');
-    div.className   = 'vc';
-    div.dataset.id  = v.id;
+    div.className    = 'vc';
+    div.dataset.id   = v.id;
     div.dataset.name = v.name;
     div.id = 'vc-' + v.id;
     div.innerHTML = `
@@ -129,57 +131,63 @@ function filterVillages() {
 }
 
 function toggleVillage(id, name) {
-  // Deselect if already chosen
-  for (const rank of [1, 2, 3]) {
-    if (sel[rank] && sel[rank].id === id) { clearSlot(rank); return; }
+  const idx = selOrder.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    // Already selected — remove it; remaining entries compact and renumber
+    selOrder.splice(idx, 1);
+  } else {
+    // Not selected — add only if fewer than 3 are chosen
+    if (selOrder.length < 3) {
+      selOrder.push({ id, name });
+    }
+    // If 3 already selected, ignore the click (no replacement)
   }
-  // Fill first empty slot
-  for (const rank of [1, 2, 3]) {
-    if (!sel[rank]) { sel[rank] = { id, name }; updateUI(); return; }
-  }
-  // All full — replace slot 3
-  sel[3] = { id, name };
   updateUI();
 }
 
-function clearSlot(rank) {
-  delete sel[rank];
+// Remove by rank (called from the ✕ button in the priority slots)
+function removeByRank(rank) {
+  selOrder.splice(rank - 1, 1);
   updateUI();
 }
 
 function updateUI() {
-  for (const rank of [1, 2, 3]) {
+  // Update priority slots on the left
+  for (let rank = 1; rank <= 3; rank++) {
     const body = document.getElementById(`slot-body-${rank}`);
-    if (sel[rank]) {
+    const v    = selOrder[rank - 1];
+    if (v) {
       body.innerHTML = `
-        <span class="slot-name">${sel[rank].name}</span>
-        <button class="btn-rm" onclick="clearSlot(${rank})">✕</button>
+        <span class="slot-name">${v.name}</span>
+        <button class="btn-rm" onclick="removeByRank(${rank})">✕</button>
       `;
     } else {
       body.innerHTML = `<span class="slot-ph">← оберіть село зі списку</span>`;
     }
   }
-  const selIds = Object.values(sel).map(s => s.id);
+
+  // Update village cards in the grid
   document.querySelectorAll('.vc').forEach(c => {
     const id    = c.dataset.id;
     const badge = document.getElementById('vcb-' + id);
-    if (selIds.includes(id)) {
+    const idx   = selOrder.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      const rank = idx + 1;
       c.classList.add('sel');
-      const rank = Object.keys(sel).find(r => sel[r].id === id);
       badge.innerHTML = `<span class="rb rb-${rank}">${rank}</span>`;
     } else {
       c.classList.remove('sel');
       badge.innerHTML = '';
     }
   });
-  const count = Object.keys(sel).length;
-  document.getElementById('selCount').textContent = count;
-  document.getElementById('btnSubmit').disabled = count < 3;
+
+  document.getElementById('selCount').textContent = selOrder.length;
+  document.getElementById('btnSubmit').disabled   = selOrder.length < 3;
 }
 
 // ── Submit vote ──
 async function submitVote() {
-  if (Object.keys(sel).length < 3) return;
+  if (selOrder.length < 3) return;
   document.getElementById('btnSubmit').disabled = true;
 
   const name           = Session.name;
@@ -195,10 +203,11 @@ async function submitVote() {
         throw { code: 'already-voted' };
       }
 
-      const choices = [1, 2, 3].map(rank => ({
-        villageId:   sel[rank].id,
-        villageName: sel[rank].name,
-        rank:        rank
+      // Rank is click order: index 0 → rank 1, index 1 → rank 2, index 2 → rank 3
+      const choices = selOrder.map((v, i) => ({
+        villageId:   v.id,
+        villageName: v.name,
+        rank:        i + 1
       }));
 
       t.set(voteRef, {
