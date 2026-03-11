@@ -1,0 +1,39 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Villages (objects) — public read, write only via admin setup
+    match /objects/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Experts — read by token (doc ID is the token itself)
+    match /experts/{token} {
+      allow read: if true;
+      // Allow marking as voted = true only
+      allow update: if request.resource.data.diff(resource.data)
+                       .affectedKeys().hasOnly(['voted'])
+                    && request.resource.data.voted == true
+                    && resource.data.voted == false;
+      allow create, delete: if false;
+    }
+
+    // Votes — anyone can create once; reads for results
+    match /votes/{voteId} {
+      allow read: if true;
+      allow create: if request.resource.data.rank is int
+                    && request.resource.data.rank >= 1
+                    && request.resource.data.rank <= 3
+                    && request.resource.data.objectId is string
+                    && request.resource.data.expertToken is string;
+      allow update, delete: if false;
+    }
+
+    // Setup flag — only writable during first-time setup
+    match /meta/setup {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

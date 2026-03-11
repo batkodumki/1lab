@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Налаштування — Найкращі села Закарпаття</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <div class="logo">
+      <span class="logo-ico">🏔️</span>
+      <div><h1>Найкращі села Закарпаття</h1><p>Система розподіленого голосування</p></div>
+    </div>
+    <nav><a href="index.html">Вхід</a></nav>
+  </div>
+</header>
+
+<main>
+  <div id="alerts"></div>
+  <div id="spinner">⏳ Зачекайте, йде ініціалізація бази даних…</div>
+
+  <div class="card setup-card" id="setupCard">
+    <div class="card-hdr">
+      <h2>⚙️ Першочергове налаштування</h2>
+      <p>Виконується <strong>один раз</strong> викладачем перед початком опитування.</p>
+    </div>
+    <div class="setup-body">
+
+      <!-- Step 1: check config -->
+      <div id="stepConfig">
+        <p style="margin-bottom:14px;font-size:.9rem;color:#37474f;">
+          Переконайтесь, що у файлі <code>js/firebase-config.js</code> вказані
+          правильні дані вашого Firebase-проєкту, потім натисніть кнопку нижче.
+        </p>
+        <button class="btn btn-primary btn-full" id="btnCheck" onclick="checkAndInit()">
+          Перевірити конфігурацію та ініціалізувати базу
+        </button>
+      </div>
+
+      <!-- Step 2: already initialized warning -->
+      <div id="stepExists" style="display:none;">
+        <div class="alert alert-warning">
+          ⚠️ База даних вже ініціалізована. Повторна ініціалізація <strong>видалить всі голоси</strong>.
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button class="btn btn-danger" onclick="forceInit()">Перезаписати (видалити всі дані)</button>
+          <a href="admin.html" class="btn btn-primary">Перейти до протоколу</a>
+        </div>
+      </div>
+
+      <!-- Step 3: result — tokens table -->
+      <div id="stepResult" style="display:none;">
+        <div class="alert alert-success" id="successMsg"></div>
+        <p style="margin:12px 0 6px;font-size:.88rem;font-weight:600;">
+          Роздайте кожному студенту його токен особисто (або через закрите повідомлення):
+        </p>
+        <button class="copy-btn" style="margin-bottom:8px;padding:5px 12px;font-size:.82rem;" onclick="copyAll()">
+          📋 Скопіювати всю таблицю
+        </button>
+        <div class="tbl-wrap">
+          <table class="token-table" id="tokenTable">
+            <thead><tr><th>#</th><th>Ім'я</th><th>Токен</th><th></th></tr></thead>
+            <tbody id="tokenBody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
+          <a href="admin.html" class="btn btn-primary">Перейти до протоколу</a>
+          <a href="index.html" class="btn" style="background:#eceff1;color:#37474f;">На головну</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Лабораторна робота №1 · Інтелектуальна обробка даних у розподілених інформаційних середовищах</p>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/app.js"></script>
+<script>
+let generatedTokens = [];
+
+async function checkAndInit() {
+  try {
+    const snap = await db.collection('meta').doc('setup').get();
+    if (snap.exists) {
+      document.getElementById('stepConfig').style.display = 'none';
+      document.getElementById('stepExists').style.display = 'block';
+    } else {
+      await runInit();
+    }
+  } catch(e) {
+    showAlert('Помилка підключення до Firebase: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+async function forceInit() {
+  if (!confirm('Видалити всі існуючі дані і почати заново?')) return;
+  document.getElementById('stepExists').style.display = 'none';
+  await runInit();
+}
+
+async function runInit() {
+  loading(true, 'btnCheck');
+  document.getElementById('spinner').style.display = 'block';
+  generatedTokens = [];
+
+  try {
+    const batch1 = db.batch();
+
+    // Delete old votes
+    const oldVotes = await db.collection('votes').get();
+    oldVotes.forEach(d => batch1.delete(d.ref));
+    // Delete old experts
+    const oldExperts = await db.collection('experts').get();
+    oldExperts.forEach(d => batch1.delete(d.ref));
+    // Delete old objects
+    const oldObjects = await db.collection('objects').get();
+    oldObjects.forEach(d => batch1.delete(d.ref));
+    await batch1.commit();
+
+    // Add villages
+    const objBatch = db.batch();
+    VILLAGES.forEach((v, i) => {
+      const ref = db.collection('objects').doc();
+      objBatch.set(ref, { name: v.name, desc: v.desc, order: i });
+    });
+    await objBatch.commit();
+
+    // Add experts (token = doc ID)
+    const expBatch = db.batch();
+    const teacherToken = 'TEACHER-' + genToken(6);
+    expBatch.set(db.collection('experts').doc(teacherToken), {
+      name: 'Викладач', isTeacher: true, voted: false
+    });
+    generatedTokens.push({ name: 'Викладач', token: teacherToken, isTeacher: true });
+
+    for (const name of EXPERT_NAMES) {
+      const token = genToken();
+      expBatch.set(db.collection('experts').doc(token), {
+        name, isTeacher: false, voted: false
+      });
+      generatedTokens.push({ name, token, isTeacher: false });
+    }
+    await expBatch.commit();
+
+    // Mark setup done
+    await db.collection('meta').doc('setup').set({ createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+
+    document.getElementById('spinner').style.display = 'none';
+    showResult();
+  } catch(e) {
+    document.getElementById('spinner').style.display = 'none';
+    loading(false, 'btnCheck');
+    showAlert('Помилка ініціалізації: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+function showResult() {
+  document.getElementById('stepConfig').style.display = 'none';
+  document.getElementById('successMsg').textContent =
+    `✅ База ініціалізована: ${VILLAGES.length} сіл, ${EXPERT_NAMES.length} експертів + 1 викладач.`;
+
+  const tbody = document.getElementById('tokenBody');
+  generatedTokens.forEach((e, i) => {
+    const tr = document.createElement('tr');
+    if (e.isTeacher) tr.className = 'teacher-row';
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${e.name}</td>
+      <td><code>${e.token}</code></td>
+      <td><button class="copy-btn" onclick="copyToken('${e.token}')">копіювати</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('stepResult').style.display = 'block';
+}
+
+function copyToken(t) {
+  navigator.clipboard.writeText(t).then(() => showAlert('Токен скопійовано!', 'success'));
+}
+
+function copyAll() {
+  const lines = generatedTokens.map(e => `${e.name}\t${e.token}`).join('\n');
+  navigator.clipboard.writeText(lines).then(() => showAlert('Таблицю скопійовано!', 'success'));
+}
+</script>
+</body>
+</html>

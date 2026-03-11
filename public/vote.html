@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Голосування — Найкращі села Закарпаття</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <div class="logo">
+      <span class="logo-ico">🏔️</span>
+      <div><h1>Найкращі села Закарпаття</h1><p>Система розподіленого пріоритетного голосування</p></div>
+    </div>
+    <nav>
+      <a href="results.html">Результати</a>
+      <a href="index.html" onclick="Session.clear()">Вийти</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div id="alerts"></div>
+  <div id="spinner">⏳ Завантаження сіл…</div>
+
+  <div id="voteApp" style="display:none;">
+    <div class="vote-grid">
+
+      <!-- Header -->
+      <div class="vote-hdr">
+        <h2>Ваш бюлетень голосування</h2>
+        <p>Оберіть <strong>3 найкращих</strong> села Закарпаття та розставте їх за пріоритетом (клікніть по селу у списку праворуч)</p>
+        <div class="legend">
+          <span><span class="rb rb-1">1</span> Найвищий пріоритет (3 бали)</span>
+          <span><span class="rb rb-2">2</span> Другий пріоритет (2 бали)</span>
+          <span><span class="rb rb-3">3</span> Третій пріоритет (1 бал)</span>
+        </div>
+      </div>
+
+      <!-- Left: priority slots -->
+      <div class="slots">
+        <div class="slot" id="slot-1">
+          <div class="slot-hdr"><span class="rb rb-1">1</span><span class="slot-lbl">Перший пріоритет — 3 бали</span></div>
+          <div class="slot-body" id="slot-body-1"><span class="slot-ph">← оберіть село зі списку</span></div>
+        </div>
+        <div class="slot" id="slot-2">
+          <div class="slot-hdr"><span class="rb rb-2">2</span><span class="slot-lbl">Другий пріоритет — 2 бали</span></div>
+          <div class="slot-body" id="slot-body-2"><span class="slot-ph">← оберіть село зі списку</span></div>
+        </div>
+        <div class="slot" id="slot-3">
+          <div class="slot-hdr"><span class="rb rb-3">3</span><span class="slot-lbl">Третій пріоритет — 1 бал</span></div>
+          <div class="slot-body" id="slot-body-3"><span class="slot-ph">← оберіть село зі списку</span></div>
+        </div>
+      </div>
+
+      <!-- Right: villages panel -->
+      <div class="vp">
+        <div class="vp-search">
+          <input type="text" id="search" placeholder="🔍 Пошук села…" oninput="filterVillages()">
+        </div>
+        <div class="vp-grid" id="vpGrid"></div>
+      </div>
+
+      <!-- Footer -->
+      <div class="vote-footer">
+        <span class="sel-count">Обрано: <span id="selCount">0</span> / 3</span>
+        <button class="btn btn-primary" id="btnSubmit" disabled onclick="submitVote()">
+          Надіслати голос
+        </button>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Лабораторна робота №1 · Інтелектуальна обробка даних у розподілених інформаційних середовищах</p>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/app.js"></script>
+<script>
+if (!Session.require()) {}  // redirects if no session
+
+const sel = {};  // rank (1-3) -> {id, name}
+let allObjects = [];
+
+// ── Load villages ──
+async function loadObjects() {
+  try {
+    const snap = await db.collection('objects').orderBy('order').get();
+    allObjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderGrid(allObjects);
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('voteApp').style.display = 'block';
+  } catch(e) {
+    document.getElementById('spinner').textContent = 'Помилка завантаження: ' + e.message;
+  }
+}
+
+function renderGrid(objects) {
+  const grid = document.getElementById('vpGrid');
+  grid.innerHTML = '';
+  objects.forEach(obj => {
+    const div = document.createElement('div');
+    div.className = 'vc';
+    div.dataset.id   = obj.id;
+    div.dataset.name = obj.name;
+    div.id = 'vc-' + obj.id;
+    div.innerHTML = `
+      <div class="vc-name">${obj.name}</div>
+      <div class="vc-desc">${obj.desc}</div>
+      <div class="vc-badge" id="vcb-${obj.id}"></div>
+    `;
+    div.addEventListener('click', () => toggleVillage(obj.id, obj.name));
+    grid.appendChild(div);
+  });
+}
+
+function filterVillages() {
+  const q = document.getElementById('search').value.toLowerCase();
+  document.querySelectorAll('.vc').forEach(c => {
+    c.style.display = c.dataset.name.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+function toggleVillage(id, name) {
+  // If already selected — deselect it
+  for (const rank of [1,2,3]) {
+    if (sel[rank] && sel[rank].id === id) { clearSlot(rank); return; }
+  }
+  // Find first free slot
+  for (const rank of [1,2,3]) {
+    if (!sel[rank]) { sel[rank] = {id, name}; updateUI(); return; }
+  }
+  // All full — replace rank 3
+  sel[3] = {id, name};
+  updateUI();
+}
+
+function clearSlot(rank) {
+  delete sel[rank];
+  updateUI();
+}
+
+function updateUI() {
+  for (const rank of [1,2,3]) {
+    const body = document.getElementById(`slot-body-${rank}`);
+    if (sel[rank]) {
+      body.innerHTML = `
+        <span class="slot-name">${sel[rank].name}</span>
+        <button class="btn-rm" onclick="clearSlot(${rank})">✕</button>
+      `;
+    } else {
+      body.innerHTML = `<span class="slot-ph">← оберіть село зі списку</span>`;
+    }
+  }
+  // Update village cards
+  const selIds = Object.values(sel).map(s => s.id);
+  document.querySelectorAll('.vc').forEach(c => {
+    const id = c.dataset.id;
+    const badge = document.getElementById('vcb-' + id);
+    if (selIds.includes(id)) {
+      c.classList.add('sel');
+      const rank = Object.keys(sel).find(r => sel[r].id === id);
+      badge.innerHTML = `<span class="rb rb-${rank}">${rank}</span>`;
+    } else {
+      c.classList.remove('sel');
+      badge.innerHTML = '';
+    }
+  });
+  const count = Object.keys(sel).length;
+  document.getElementById('selCount').textContent = count;
+  document.getElementById('btnSubmit').disabled = count < 3;
+}
+
+// ── Submit vote ──
+async function submitVote() {
+  if (Object.keys(sel).length < 3) return;
+  document.getElementById('btnSubmit').disabled = true;
+
+  const token = Session.token;
+  try {
+    // Double-check not already voted
+    const expSnap = await db.collection('experts').doc(token).get();
+    if (expSnap.data().voted) {
+      showAlert('Ви вже проголосували.', 'info');
+      setTimeout(() => window.location.href = 'results.html', 1500);
+      return;
+    }
+
+    const batch = db.batch();
+    for (const rank of [1,2,3]) {
+      const ref = db.collection('votes').doc();
+      batch.set(ref, {
+        expertToken: token,
+        objectId:    sel[rank].id,
+        rank:        parseInt(rank),
+        createdAt:   firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    batch.update(db.collection('experts').doc(token), { voted: true });
+    await batch.commit();
+
+    showAlert('✅ Ваш голос збережено анонімно. Дякуємо!', 'success');
+    setTimeout(() => window.location.href = 'results.html', 1800);
+  } catch(e) {
+    showAlert('Помилка збереження: ' + e.message, 'error');
+    document.getElementById('btnSubmit').disabled = false;
+  }
+}
+
+loadObjects();
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Вхід — Найкращі села Закарпаття</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <div class="logo">
+      <span class="logo-ico">🏔️</span>
+      <div><h1>Найкращі села Закарпаття</h1><p>Система розподіленого пріоритетного голосування</p></div>
+    </div>
+    <nav>
+      <a href="index.html" class="active">Вхід</a>
+      <a href="results.html">Результати</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div id="alerts"></div>
+
+  <div class="page-center">
+    <div class="card login-card">
+      <div class="card-hdr">
+        <h2>Вхід до системи голосування</h2>
+        <p>Введіть персональний токен доступу, отриманий від викладача</p>
+      </div>
+
+      <div class="login-body">
+        <div class="form-group">
+          <label for="tokenInput">Токен доступу</label>
+          <input type="text" id="tokenInput" placeholder="Наприклад: AB2KPQ7R"
+                 autocomplete="off" autocapitalize="characters" maxlength="16"
+                 onkeydown="if(event.key==='Enter') doLogin()">
+          <small>Токен анонімний — ваше ім'я не пов'язується з голосом в публічних результатах</small>
+        </div>
+        <button class="btn btn-primary btn-full" id="btnLogin" onclick="doLogin()">
+          Увійти та проголосувати
+        </button>
+      </div>
+
+      <div class="info-box">
+        <h3>Про опитування</h3>
+        <ul>
+          <li>Оберіть <strong>3 найкращих</strong> села Закарпаття на вашу думку</li>
+          <li>Розставте їх за пріоритетом: 1-е — найважливіше</li>
+          <li>Голосування <strong>анонімне та конфіденційне</strong></li>
+          <li>Проголосувати можна лише <strong>один раз</strong></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <p>Лабораторна робота №1 · Інтелектуальна обробка даних у розподілених інформаційних середовищах</p>
+  <p>Предметна область: <strong>Найкращі села Закарпаття</strong></p>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/app.js"></script>
+<script>
+async function doLogin() {
+  const token = document.getElementById('tokenInput').value.trim().toUpperCase();
+  if (!token) { showAlert('Введіть токен доступу.', 'error'); return; }
+
+  document.getElementById('btnLogin').disabled = true;
+
+  try {
+    const snap = await db.collection('experts').doc(token).get();
+    if (!snap.exists) {
+      showAlert('Невірний токен. Перевірте та спробуйте знову.', 'error');
+      document.getElementById('btnLogin').disabled = false;
+      return;
+    }
+    const expert = snap.data();
+    Session.set(token, expert.name, expert.isTeacher);
+
+    if (expert.isTeacher) {
+      window.location.href = 'admin.html';
+      return;
+    }
+    if (expert.voted) {
+      showAlert('Ви вже проголосували. Дякуємо!', 'info');
+      setTimeout(() => window.location.href = 'results.html', 1500);
+      return;
+    }
+    window.location.href = 'vote.html';
+  } catch(e) {
+    showAlert('Помилка: ' + e.message, 'error');
+    document.getElementById('btnLogin').disabled = false;
+  }
+}
+</script>
+</body>
+</html>

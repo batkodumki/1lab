@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Результати — Найкращі села Закарпаття</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header>
+  <div class="hdr">
+    <div class="logo">
+      <span class="logo-ico">🏔️</span>
+      <div><h1>Найкращі села Закарпаття</h1><p>Система розподіленого пріоритетного голосування</p></div>
+    </div>
+    <nav>
+      <a href="index.html">Головна</a>
+      <a href="results.html" class="active">Результати</a>
+      <button onclick="loadResults()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:.85rem;">↻ Оновити</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div id="alerts"></div>
+  <div id="spinner">⏳ Завантаження результатів…</div>
+  <div id="resApp" style="display:none;">
+
+    <h2 style="font-size:1.4rem;color:#2e7d32;margin-bottom:16px;">Результати голосування</h2>
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow"></div>
+
+    <!-- Empty state -->
+    <div class="empty" id="emptyState" style="display:none;">
+      <p>Голосування ще не розпочалось. Результати з'являться після перших голосів.</p>
+    </div>
+
+    <!-- Podium -->
+    <section id="podiumSec" style="display:none;">
+      <h3>Топ-3 найкращих села</h3>
+      <div class="podium" id="podium"></div>
+    </section>
+
+    <!-- Ranking table -->
+    <section id="rankSec" style="display:none;">
+      <h3>Повне рейтингування (ядро A²)</h3>
+      <p class="sec-note">
+        Метод агрегації: 1-е місце = 3 бали, 2-е місце = 2 бали, 3-є місце = 1 бал.
+        Ядро A² — підмножина сіл, що отримали хоча б один голос.
+      </p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>#</th><th>Село</th><th>Опис</th>
+            <th title="Зважені бали">Бали</th>
+            <th title="Кількість згадок">Згадок</th>
+            <th>1-е</th><th>2-е</th><th>3-є</th>
+            <th>Гістограма</th>
+          </tr></thead>
+          <tbody id="rankBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Not selected -->
+    <section id="notSelSec" style="display:none;">
+      <h3>Поза ядром A² (не обрані жодним експертом)</h3>
+      <div class="tags" id="notSelTags"></div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <p>Лабораторна робота №1 · Інтелектуальна обробка даних у розподілених інформаційних середовищах</p>
+  <p>Предметна область: <strong>Найкращі села Закарпаття</strong></p>
+</footer>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/app.js"></script>
+<script>
+async function loadResults() {
+  document.getElementById('spinner').style.display = 'block';
+  document.getElementById('resApp').style.display  = 'none';
+
+  try {
+    const [objSnap, voteSnap, expSnap] = await Promise.all([
+      db.collection('objects').orderBy('order').get(),
+      db.collection('votes').get(),
+      db.collection('experts').where('isTeacher', '==', false).get()
+    ]);
+
+    const objects   = objSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const votes     = voteSnap.docs.map(d => d.data());
+    const totalExp  = expSnap.size;
+    const votedCount = expSnap.docs.filter(d => d.data().voted).length;
+
+    // Aggregate scores
+    const scoreMap = {};
+    objects.forEach(o => {
+      scoreMap[o.id] = { ...o, score:0, mentions:0, p1:0, p2:0, p3:0 };
+    });
+    votes.forEach(v => {
+      if (!scoreMap[v.objectId]) return;
+      const pts = v.rank === 1 ? 3 : v.rank === 2 ? 2 : 1;
+      scoreMap[v.objectId].score    += pts;
+      scoreMap[v.objectId].mentions += 1;
+      if (v.rank === 1) scoreMap[v.objectId].p1++;
+      if (v.rank === 2) scoreMap[v.objectId].p2++;
+      if (v.rank === 3) scoreMap[v.objectId].p3++;
+    });
+
+    const sorted = Object.values(scoreMap).sort((a,b) =>
+      b.score - a.score || b.mentions - a.mentions
+    );
+    const core    = sorted.filter(s => s.score > 0);
+    const notSel  = sorted.filter(s => s.score === 0);
+
+    // Stats
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat"><div class="stat-n">${votedCount}</div><div class="stat-l">Проголосувало</div></div>
+      <div class="stat"><div class="stat-n">${totalExp}</div><div class="stat-l">Всього експертів</div></div>
+      <div class="stat"><div class="stat-n">${totalExp ? Math.round(votedCount/totalExp*100) : 0}%</div><div class="stat-l">Явка</div></div>
+      <div class="stat"><div class="stat-n">${core.length}</div><div class="stat-l">Ядро A²</div></div>
+    `;
+
+    if (core.length === 0) {
+      document.getElementById('emptyState').style.display = 'block';
+    } else {
+      document.getElementById('emptyState').style.display = 'none';
+
+      // Podium (top 3)
+      if (core.length >= 3) {
+        const top = sorted.slice(0,3);
+        document.getElementById('podium').innerHTML = `
+          <div class="pd">
+            <div class="pd-name">${top[1].name}</div>
+            <div class="pd-score">${top[1].score} балів</div>
+            <div class="pd-blk pd-2">2</div>
+          </div>
+          <div class="pd">
+            <div class="pd-name">🏆 ${top[0].name}</div>
+            <div class="pd-score">${top[0].score} балів</div>
+            <div class="pd-blk pd-1">1</div>
+          </div>
+          <div class="pd">
+            <div class="pd-name">${top[2].name}</div>
+            <div class="pd-score">${top[2].score} балів</div>
+            <div class="pd-blk pd-3">3</div>
+          </div>
+        `;
+        document.getElementById('podiumSec').style.display = 'block';
+      }
+
+      // Ranking table
+      const maxScore = sorted[0].score || 1;
+      const medals = ['🥇','🥈','🥉'];
+      let rows = '';
+      sorted.forEach((row, i) => {
+        if (row.score === 0) return;
+        const rankCell = i < 3
+          ? `<span class="medal">${medals[i]}</span>`
+          : `<span class="rn">${i+1}</span>`;
+        const pct = Math.round(row.score / maxScore * 100);
+        rows += `
+          <tr class="${i < 3 ? 'tr-top' : ''}">
+            <td class="td-rank">${rankCell}</td>
+            <td><strong>${row.name}</strong></td>
+            <td class="td-desc">${row.desc}</td>
+            <td class="td-score">${row.score}</td>
+            <td class="td-c">${row.mentions}</td>
+            <td class="td-c">${row.p1}</td>
+            <td class="td-c">${row.p2}</td>
+            <td class="td-c">${row.p3}</td>
+            <td><div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div></td>
+          </tr>`;
+      });
+      document.getElementById('rankBody').innerHTML = rows;
+      document.getElementById('rankSec').style.display = 'block';
+
+      // Not selected
+      if (notSel.length > 0) {
+        document.getElementById('notSelTags').innerHTML =
+          notSel.map(r => `<span class="tag">${r.name}</span>`).join('');
+        document.getElementById('notSelSec').style.display = 'block';
+      }
+    }
+
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('resApp').style.display = 'block';
+  } catch(e) {
+    document.getElementById('spinner').textContent = 'Помилка: ' + e.message;
+    console.error(e);
+  }
+}
+
+loadResults();
+</script>
+</body>
+</html>

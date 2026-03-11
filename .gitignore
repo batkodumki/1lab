@@ -1,5 +1,3 @@
-__pycache__/
-*.pyc
-database.db
-*.db
+.firebase/
+node_modules/
 .env
