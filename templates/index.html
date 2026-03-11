@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Вхід — Найкращі села Закарпаття{% endblock %}
+
+{% block content %}
+<div class="page-center">
+    <div class="card login-card">
+        <div class="card-header">
+            <h2>Вхід до системи голосування</h2>
+            <p>Введіть персональний токен доступу, отриманий від викладача</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('login') }}" class="login-form">
+            <div class="form-group">
+                <label for="token">Токен доступу</label>
+                <input
+                    type="text"
+                    id="token"
+                    name="token"
+                    placeholder="Наприклад: A1B2C3D4"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    required
+                >
+                <small>Токен є анонімним — ваше ім'я не пов'язується з голосом</small>
+            </div>
+            <button type="submit" class="btn btn-primary btn-large">
+                Увійти та проголосувати
+            </button>
+        </form>
+
+        <div class="info-box">
+            <h3>Про опитування</h3>
+            <ul>
+                <li>Оберіть <strong>3 найкращих</strong> села Закарпаття на вашу думку</li>
+                <li>Розставте їх за пріоритетом: 1-е місце — найважливіше</li>
+                <li>Голосування є <strong>анонімним та конфіденційним</strong></li>
+                <li>Проголосувати можна лише <strong>один раз</strong></li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Найкращі села Закарпаття{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <div class="logo">
+                <span class="logo-icon">🏔️</span>
+                <div>
+                    <h1>Найкращі села Закарпаття</h1>
+                    <p class="subtitle">Система розподіленого пріоритетного голосування</p>
+                </div>
+            </div>
+            <nav>
+                <a href="{{ url_for('index') }}">Головна</a>
+                <a href="{{ url_for('results') }}">Результати</a>
+                {% if session.get('expert_id') %}
+                    {% if session.get('is_teacher') %}
+                        <a href="{{ url_for('admin') }}">Протокол</a>
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}">Вийти</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>Лабораторна робота №1 · Інтелектуальна обробка даних у розподілених інформаційних середовищах</p>
+        <p>Предметна область: <strong>Найкращі села Закарпаття</strong></p>
+    </footer>
+</body>
+</html>
